@@ -266,7 +266,6 @@ end
 
         @testset "INP" begin
             msh = load(joinpath(tf, "cube.inp"))
-
             @test length(faces(msh)) == 24
             @test length(coordinates(msh)) == 14
             @test msh.views == []
