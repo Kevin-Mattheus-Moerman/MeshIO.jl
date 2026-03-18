@@ -116,10 +116,141 @@ end
             @test test_face_indices(msh)
             @test length(coordinates(msh)) == 72
 
-            msh = load(joinpath(tf, "cube.ply")) # quads
+            msh = load(joinpath(tf, "cube.ply")) # quads with normals
             @test length(coordinates(msh)) == 24
             @test length(faces(msh)) == 12
             @test test_face_indices(msh)
+            @test length(normals(msh)) == 24
+            @test normals(msh)[1] ≈ Vec3f(0, 0, -1)
+
+            @testset "ASCII normals + UVs" begin
+                msh = load(joinpath(tf, "ascii_normals_uvs.ply"))
+                @test length(coordinates(msh)) == 4
+                @test length(faces(msh)) == 2
+                @test test_face_indices(msh)
+                @test length(normals(msh)) == 4
+                @test all(n -> n ≈ Vec3f(0, 0, 1), normals(msh))
+                @test haskey(vertex_attributes(msh), :uv)
+                uvs = msh.uv
+                @test length(uvs) == 4
+                @test uvs[1] ≈ Vec2f(0, 0)
+                @test uvs[2] ≈ Vec2f(1, 0)
+                @test uvs[3] ≈ Vec2f(1, 1)
+                @test uvs[4] ≈ Vec2f(0, 1)
+            end
+
+            @testset "ASCII s/t UVs" begin
+                msh = load(joinpath(tf, "ascii_st_uvs.ply"))
+                @test length(coordinates(msh)) == 3
+                @test length(faces(msh)) == 1
+                @test haskey(vertex_attributes(msh), :uv)
+                uvs = msh.uv
+                @test uvs[1] ≈ Vec2f(0.25, 0.75)
+                @test uvs[2] ≈ Vec2f(0.5, 0.5)
+                @test uvs[3] ≈ Vec2f(0.0, 1.0)
+            end
+
+            @testset "ASCII n-gon triangulation" begin
+                msh = load(joinpath(tf, "ascii_pentagon.ply"))
+                @test length(coordinates(msh)) == 5
+                # Pentagon should be triangulated into 3 triangles
+                @test length(faces(msh)) == 3
+                @test test_face_indices(msh)
+            end
+
+            @testset "ASCII extra elements ignored" begin
+                msh = load(joinpath(tf, "ascii_extra_elements.ply"))
+                @test length(coordinates(msh)) == 4
+                @test length(faces(msh)) == 2
+                @test test_face_indices(msh)
+            end
+
+            @testset "Binary normals + UVs" begin
+                msh = load(joinpath(tf, "binary_normals_uvs.ply"))
+                @test length(coordinates(msh)) == 4
+                @test length(faces(msh)) == 2
+                @test test_face_indices(msh)
+                @test length(normals(msh)) == 4
+                @test all(n -> n ≈ Vec3f(0, 0, 1), normals(msh))
+                @test haskey(vertex_attributes(msh), :uv)
+                uvs = msh.uv
+                @test uvs[1] ≈ Vec2f(0, 0)
+                @test uvs[3] ≈ Vec2f(1, 1)
+            end
+
+            @testset "Binary RGBA colors (UInt8)" begin
+                msh = load(joinpath(tf, "binary_colors_uint8.ply"))
+                @test length(coordinates(msh)) == 3
+                @test length(faces(msh)) == 1
+                @test haskey(vertex_attributes(msh), :color)
+                colors = msh.color
+                @test length(colors) == 3
+                # UInt8 colors should be normalized to [0,1]
+                @test colors[1] ≈ Vec4f(1.0, 0.0, 0.0, 128/255)
+                @test colors[2] ≈ Vec4f(0.0, 1.0, 0.0, 1.0)
+                @test colors[3] ≈ Vec4f(0.0, 0.0, 1.0, 64/255)
+            end
+
+            @testset "Binary RGB colors (UInt8, no alpha)" begin
+                msh = load(joinpath(tf, "binary_colors_rgb.ply"))
+                @test length(coordinates(msh)) == 3
+                @test haskey(vertex_attributes(msh), :color)
+                colors = msh.color
+                @test colors[1] ≈ Vec3f(1.0, 0.0, 0.0)
+                @test colors[2] ≈ Vec3f(0.0, 1.0, 0.0)
+                @test colors[3] ≈ Vec3f(0.0, 0.0, 1.0)
+            end
+
+            @testset "Binary double positions + float normals" begin
+                msh = load(joinpath(tf, "binary_double_positions.ply"))
+                @test length(coordinates(msh)) == 3
+                @test length(faces(msh)) == 1
+                @test test_face_indices(msh)
+                # Positions should be converted to Float32
+                @test coordinates(msh)[1] ≈ Point3f(0, 0, 0)
+                @test coordinates(msh)[2] ≈ Point3f(1, 0, 0)
+                @test coordinates(msh)[3] ≈ Point3f(0.5, 1, 0)
+                @test length(normals(msh)) == 3
+                @test all(n -> n ≈ Vec3f(0, 1, 0), normals(msh))
+            end
+
+            @testset "Binary custom scalar properties" begin
+                msh = load(joinpath(tf, "binary_custom_scalars.ply"))
+                @test length(coordinates(msh)) == 3
+                @test haskey(vertex_attributes(msh), :intensity)
+                @test haskey(vertex_attributes(msh), :confidence)
+                @test msh.intensity[1] ≈ 0.5f0
+                @test msh.intensity[2] ≈ 0.8f0
+                @test msh.confidence[3] ≈ 0.95f0
+            end
+
+            @testset "Binary uint face indices with ushort count" begin
+                msh = load(joinpath(tf, "binary_uint_faces.ply"))
+                @test length(coordinates(msh)) == 4
+                @test length(faces(msh)) == 2
+                @test test_face_indices(msh)
+            end
+
+            @testset "PLY round-trip with normals" begin
+                mktempdir() do tmpdir
+                    msh = load(joinpath(tf, "cube.ply"))
+                    # Save as ASCII and reload
+                    save(File{format"PLY_ASCII"}(joinpath(tmpdir, "cube_rt.ply")), msh)
+                    msh2 = load(joinpath(tmpdir, "cube_rt.ply"))
+                    @test length(coordinates(msh2)) == length(coordinates(msh))
+                    @test length(faces(msh2)) == length(faces(msh))
+                    @test length(normals(msh2)) == length(normals(msh))
+                    @test normals(msh2) ≈ normals(msh)
+
+                    # Save as binary and reload
+                    save(File{format"PLY_BINARY"}(joinpath(tmpdir, "cube_rt.ply")), msh)
+                    msh3 = load(joinpath(tmpdir, "cube_rt.ply"))
+                    @test length(coordinates(msh3)) == length(coordinates(msh))
+                    @test length(faces(msh3)) == length(faces(msh))
+                    @test length(normals(msh3)) == length(normals(msh))
+                    @test normals(msh3) ≈ normals(msh)
+                end
+            end
         end
         @testset "OFF" begin
             msh = load(joinpath(tf, "test.off"))
